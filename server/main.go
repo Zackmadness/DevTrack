@@ -1,105 +1,289 @@
 package main
 
 import (
+	"context"
+	"log"
 	"net/http"
-	"strconv"
+
+	"devtrack/auth"
+	"devtrack/database"
+	"devtrack/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 )
 
+type User struct {
+	ID       int64  `json:"id"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type Project struct {
-	ID          int    `json:"id"`
+	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
-var projects = []Project{
-	{
-		ID:          1,
-		Name:        "DevTrack",
-		Description: "Full Stack Tracker",
-	},
-}
-
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env")
+	}
+
+	err = database.ConnectDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	r := gin.Default()
 
 	r.Use(cors.Default())
 
-	// GET ALL PROJECTS
-	r.GET("/projects", func(c *gin.Context) {
+	// REGISTER
+	r.POST("/register", func(c *gin.Context) {
+
+		var user User
+
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		hashedPassword, err :=
+			bcrypt.GenerateFromPassword(
+				[]byte(user.Password),
+				bcrypt.DefaultCost,
+			)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		err = database.DB.QueryRow(
+			context.Background(),
+			`
+			INSERT INTO users
+			(email, password)
+			VALUES ($1, $2)
+			RETURNING id
+			`,
+			user.Email,
+			string(hashedPassword),
+		).Scan(&user.ID)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message": "User registered",
+		})
+	})
+
+	// LOGIN
+	r.POST("/login", func(c *gin.Context) {
+
+		var request User
+
+		if err := c.BindJSON(&request); err != nil {
+			return
+		}
+
+		var user User
+
+		err := database.DB.QueryRow(
+			context.Background(),
+			`
+			SELECT id, email, password
+			FROM users
+			WHERE email = $1
+			`,
+			request.Email,
+		).Scan(
+			&user.ID,
+			&user.Email,
+			&user.Password,
+		)
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid credentials",
+			})
+			return
+		}
+
+		err = bcrypt.CompareHashAndPassword(
+			[]byte(user.Password),
+			[]byte(request.Password),
+		)
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid credentials",
+			})
+			return
+		}
+
+		token, err := auth.GenerateToken(user.ID)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"token": token,
+		})
+	})
+
+	// PROTECTED ROUTES
+	protected := r.Group("/")
+	protected.Use(
+		middleware.AuthMiddleware(),
+	)
+
+	// GET PROJECTS
+	protected.GET("/projects", func(c *gin.Context) {
+
+		rows, err := database.DB.Query(
+			context.Background(),
+			"SELECT id, name, description FROM projects ORDER BY id",
+		)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		defer rows.Close()
+
+		var projects []Project
+
+		for rows.Next() {
+
+			var project Project
+
+			rows.Scan(
+				&project.ID,
+				&project.Name,
+				&project.Description,
+			)
+
+			projects = append(
+				projects,
+				project,
+			)
+		}
+
 		c.JSON(http.StatusOK, projects)
 	})
 
 	// CREATE PROJECT
-	r.POST("/projects", func(c *gin.Context) {
-		var newProject Project
+	protected.POST("/projects", func(c *gin.Context) {
 
-		if err := c.BindJSON(&newProject); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
+		var project Project
+
+		if err := c.BindJSON(&project); err != nil {
+			return
+		}
+
+		err := database.DB.QueryRow(
+			context.Background(),
+			`
+			INSERT INTO projects
+			(name, description)
+			VALUES ($1, $2)
+			RETURNING id
+			`,
+			project.Name,
+			project.Description,
+		).Scan(&project.ID)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": err.Error(),
 			})
 			return
 		}
 
-		newProject.ID = len(projects) + 1
-		projects = append(projects, newProject)
-
-		c.JSON(http.StatusCreated, newProject)
+		c.JSON(http.StatusCreated, project)
 	})
 
 	// UPDATE PROJECT
-	r.PUT("/projects/:id", func(c *gin.Context) {
+	protected.PUT("/projects/:id", func(c *gin.Context) {
+
 		id := c.Param("id")
 
-		var updatedProject Project
+		var project Project
 
-		if err := c.BindJSON(&updatedProject); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
+		if err := c.BindJSON(&project); err != nil {
+			return
+		}
+
+		_, err := database.DB.Exec(
+			context.Background(),
+			`
+			UPDATE projects
+			SET name=$1,
+			    description=$2
+			WHERE id=$3
+			`,
+			project.Name,
+			project.Description,
+			id,
+		)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": err.Error(),
 			})
 			return
 		}
 
-		for i, project := range projects {
-			if strconv.Itoa(project.ID) == id {
-				projects[i].Name = updatedProject.Name
-				projects[i].Description = updatedProject.Description
-
-				c.JSON(http.StatusOK, projects[i])
-				return
-			}
-		}
-
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Project not found",
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Project updated",
 		})
 	})
 
 	// DELETE PROJECT
-	r.DELETE("/projects/:id", func(c *gin.Context) {
+	protected.DELETE("/projects/:id", func(c *gin.Context) {
+
 		id := c.Param("id")
 
-		for i, project := range projects {
-			if strconv.Itoa(project.ID) == id {
-				projects = append(
-					projects[:i],
-					projects[i+1:]...,
-				)
+		_, err := database.DB.Exec(
+			context.Background(),
+			"DELETE FROM projects WHERE id=$1",
+			id,
+		)
 
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Project deleted",
-				})
-
-				return
-			}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			return
 		}
 
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Project not found",
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Project deleted",
 		})
 	})
+
+	log.Println("Server running on :8080")
 
 	r.Run(":8080")
 }

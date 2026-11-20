@@ -1,41 +1,35 @@
 const API_URL = "http://localhost:8080";
 
-export async function getProjects() {
-  const response = await fetch(
-    `${API_URL}/projects`
-  );
-
-  return response.json();
+function getAuthHeaders() {
+  return {
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  };
 }
 
-
-export async function addProject(
-  project
-) {
+export async function getProjects() {
   const response = await fetch(
     `${API_URL}/projects`,
     {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-      body: JSON.stringify(project),
+      headers: getAuthHeaders(),
     }
   );
 
   return response.json();
 }
 
+export async function addProject(project) {
+  const response = await fetch(
+    `${API_URL}/projects`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(project),
+    }
+  );
 
-export async function deleteProject(
-id
-) {
-await fetch(`${API_URL}/projects/${id}`, {
-method: "DELETE",
-});
+  return response.json();
 }
-
 
 export async function updateProject(
   id,
@@ -45,11 +39,20 @@ export async function updateProject(
     `${API_URL}/projects/${id}`,
     {
       method: "PUT",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(project),
+    }
+  );
+
+  return response.json();
+}
+
+export async function deleteProject(id) {
+  const response = await fetch(
+    `${API_URL}/projects/${id}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(),
     }
   );
 
