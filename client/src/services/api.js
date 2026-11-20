@@ -1,6 +1,8 @@
-export async function getServerMessage() {
+const API_URL = "http://localhost:8080";
+
+export async function getProjects() {
   const response = await fetch(
-    "http://localhost:8080"
+    `${API_URL}/projects`
   );
 
   return response.json();

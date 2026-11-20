@@ -1,20 +1,36 @@
-import { useEffect, useState } from "react";
-import { getServerMessage } from "./services/api";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import { getProjects } from "./services/api";
+
+import ProjectCard from "./components/ProjectCard";
 
 function App() {
-  const [message, setMessage] = useState("");
+  const [projects, setProjects] =
+    useState([]);
 
   useEffect(() => {
-    getServerMessage()
-      .then((data) => setMessage(data.message))
+    getProjects()
+      .then(setProjects)
       .catch(console.error);
   }, []);
 
   return (
-    <div className="p-10">
-      <h1 className="text-4xl font-bold">
-        {message}
+    <div className="min-h-screen bg-slate-900 p-8 text-white">
+      <h1 className="mb-6 text-5xl font-bold">
+        DevTrack
       </h1>
+
+      <div className="grid gap-4">
+        {projects.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+          />
+        ))}
+      </div>
     </div>
   );
 }
