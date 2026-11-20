@@ -26,3 +26,32 @@ export async function addProject(
 
   return response.json();
 }
+
+
+export async function deleteProject(
+id
+) {
+await fetch(`${API_URL}/projects/${id}`, {
+method: "DELETE",
+});
+}
+
+
+export async function updateProject(
+  id,
+  project
+) {
+  const response = await fetch(
+    `${API_URL}/projects/${id}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify(project),
+    }
+  );
+
+  return response.json();
+}
