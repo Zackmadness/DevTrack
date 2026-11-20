@@ -7,3 +7,22 @@ export async function getProjects() {
 
   return response.json();
 }
+
+
+export async function addProject(
+  project
+) {
+  const response = await fetch(
+    `${API_URL}/projects`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify(project),
+    }
+  );
+
+  return response.json();
+}

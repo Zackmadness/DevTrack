@@ -31,4 +31,19 @@ func main() {
 	})
 
 	r.Run(":8080")
+
+	r.POST("/projects", func(c *gin.Context) {
+
+		var newProject Project
+
+		if err := c.BindJSON(&newProject); err != nil {
+			return
+		}
+
+		newProject.ID = len(projects) + 1
+
+		projects = append(projects, newProject)
+
+		c.JSON(http.StatusCreated, newProject)
+	})
 }
