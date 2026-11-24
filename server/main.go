@@ -30,6 +30,7 @@ type Project struct {
 }
 
 func main() {
+	// Load .env
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env")
@@ -37,32 +38,26 @@ func main() {
 
 	fmt.Println(os.Getenv("DATABASE_URL"))
 
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "DevTrack API Running",
-		})
-	})
-
+	// Connect DB
 	err = database.ConnectDB()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// Create Gin router
 	r := gin.Default()
 
 	r.Use(cors.Default())
 
+	// Health Check Route
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "DevTrack API Running",
+		c.JSON(http.StatusOK, gin.H{
+			"message": "DevTrack API Running 🚀",
 		})
 	})
 
-	r.Use(cors.Default())
-
 	// REGISTER
 	r.POST("/register", func(c *gin.Context) {
-
 		var user User
 
 		if err := c.BindJSON(&user); err != nil {
@@ -72,11 +67,10 @@ func main() {
 			return
 		}
 
-		hashedPassword, err :=
-			bcrypt.GenerateFromPassword(
-				[]byte(user.Password),
-				bcrypt.DefaultCost,
-			)
+		hashedPassword, err := bcrypt.GenerateFromPassword(
+			[]byte(user.Password),
+			bcrypt.DefaultCost,
+		)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -88,8 +82,7 @@ func main() {
 		err = database.DB.QueryRow(
 			context.Background(),
 			`
-			INSERT INTO users
-			(email, password)
+			INSERT INTO users (email, password)
 			VALUES ($1, $2)
 			RETURNING id
 			`,
@@ -111,10 +104,12 @@ func main() {
 
 	// LOGIN
 	r.POST("/login", func(c *gin.Context) {
-
 		var request User
 
 		if err := c.BindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
 			return
 		}
 
@@ -167,15 +162,12 @@ func main() {
 		})
 	})
 
-	// PROTECTED ROUTES
+	// Protected Routes
 	protected := r.Group("/")
-	protected.Use(
-		middleware.AuthMiddleware(),
-	)
+	protected.Use(middleware.AuthMiddleware())
 
 	// GET PROJECTS
 	protected.GET("/projects", func(c *gin.Context) {
-
 		rows, err := database.DB.Query(
 			context.Background(),
 			"SELECT id, name, description FROM projects ORDER BY id",
@@ -190,22 +182,22 @@ func main() {
 
 		defer rows.Close()
 
-		var projects []Project
+		projects := make([]Project, 0)
 
 		for rows.Next() {
-
 			var project Project
 
-			rows.Scan(
+			err := rows.Scan(
 				&project.ID,
 				&project.Name,
 				&project.Description,
 			)
 
-			projects = append(
-				projects,
-				project,
-			)
+			if err != nil {
+				continue
+			}
+
+			projects = append(projects, project)
 		}
 
 		c.JSON(http.StatusOK, projects)
@@ -213,18 +205,19 @@ func main() {
 
 	// CREATE PROJECT
 	protected.POST("/projects", func(c *gin.Context) {
-
 		var project Project
 
 		if err := c.BindJSON(&project); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
 			return
 		}
 
 		err := database.DB.QueryRow(
 			context.Background(),
 			`
-			INSERT INTO projects
-			(name, description)
+			INSERT INTO projects (name, description)
 			VALUES ($1, $2)
 			RETURNING id
 			`,
@@ -244,12 +237,14 @@ func main() {
 
 	// UPDATE PROJECT
 	protected.PUT("/projects/:id", func(c *gin.Context) {
-
 		id := c.Param("id")
 
 		var project Project
 
 		if err := c.BindJSON(&project); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
 			return
 		}
 
@@ -257,9 +252,9 @@ func main() {
 			context.Background(),
 			`
 			UPDATE projects
-			SET name=$1,
-			    description=$2
-			WHERE id=$3
+			SET name = $1,
+			    description = $2
+			WHERE id = $3
 			`,
 			project.Name,
 			project.Description,
@@ -280,12 +275,11 @@ func main() {
 
 	// DELETE PROJECT
 	protected.DELETE("/projects/:id", func(c *gin.Context) {
-
 		id := c.Param("id")
 
 		_, err := database.DB.Exec(
 			context.Background(),
-			"DELETE FROM projects WHERE id=$1",
+			"DELETE FROM projects WHERE id = $1",
 			id,
 		)
 
@@ -303,5 +297,7 @@ func main() {
 
 	log.Println("Server running on :8080")
 
-	r.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -1,8 +1,10 @@
 const API_URL = "http://localhost:8080";
 
 function getAuthHeaders() {
+  const token = localStorage.getItem("token");
+
   return {
-    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
 }
