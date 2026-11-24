@@ -43,7 +43,7 @@ export default function Login() {
           data.token
         );
 
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (err) {
       setError(
