@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,8 +36,6 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading .env")
 	}
-
-	fmt.Println(os.Getenv("DATABASE_URL"))
 
 	// Connect DB
 	err = database.ConnectDB()
@@ -259,18 +256,20 @@ func main() {
 			context.Background(),
 			`
 		INSERT INTO projects
-		(
-			name,
-			description,
-			user_id
-		)
-		VALUES
-		(
-			$1,
-			$2,
-			$3
-		)
-		RETURNING id
+(
+    name,
+    description,
+    status,
+    user_id
+)
+VALUES
+(
+    $1,
+    $2,
+    $3,
+    $4
+)
+RETURNING id
 		`,
 			project.Name,
 			project.Description,
@@ -380,4 +379,16 @@ func main() {
 			},
 		)
 	})
+
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server running on :%s\n", port)
+
+	if err := r.Run(":" + port); err != nil {
+		log.Fatal(err)
+	}
 }
