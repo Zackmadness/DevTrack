@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"devtrack/auth"
 	"devtrack/database"
@@ -33,12 +35,28 @@ func main() {
 		log.Fatal("Error loading .env")
 	}
 
+	fmt.Println(os.Getenv("DATABASE_URL"))
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "DevTrack API Running",
+		})
+	})
+
 	err = database.ConnectDB()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	r := gin.Default()
+
+	r.Use(cors.Default())
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "DevTrack API Running",
+		})
+	})
 
 	r.Use(cors.Default())
 
