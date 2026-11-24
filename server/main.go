@@ -27,6 +27,8 @@ type Project struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Status      string `json:"status"`
+	UserID      int64  `json:"user_id"`
 }
 
 func main() {
@@ -168,9 +170,29 @@ func main() {
 
 	// GET PROJECTS
 	protected.GET("/projects", func(c *gin.Context) {
+
+		userID, exists := c.Get("userID")
+
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
 		rows, err := database.DB.Query(
 			context.Background(),
-			"SELECT id, name, description FROM projects ORDER BY id",
+			`
+		SELECT
+			id,
+			name,
+			description,
+			user_id
+		FROM projects
+		WHERE user_id = $1
+		ORDER BY id
+		`,
+			userID,
 		)
 
 		if err != nil {
@@ -191,20 +213,37 @@ func main() {
 				&project.ID,
 				&project.Name,
 				&project.Description,
+				&project.UserID,
 			)
 
 			if err != nil {
 				continue
 			}
 
-			projects = append(projects, project)
+			projects = append(
+				projects,
+				project,
+			)
 		}
 
-		c.JSON(http.StatusOK, projects)
+		c.JSON(
+			http.StatusOK,
+			projects,
+		)
 	})
 
 	// CREATE PROJECT
 	protected.POST("/projects", func(c *gin.Context) {
+
+		userID, exists := c.Get("userID")
+
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
 		var project Project
 
 		if err := c.BindJSON(&project); err != nil {
@@ -213,17 +252,32 @@ func main() {
 			})
 			return
 		}
+
+		project.UserID = userID.(int64)
 
 		err := database.DB.QueryRow(
 			context.Background(),
 			`
-			INSERT INTO projects (name, description)
-			VALUES ($1, $2)
-			RETURNING id
-			`,
+		INSERT INTO projects
+		(
+			name,
+			description,
+			user_id
+		)
+		VALUES
+		(
+			$1,
+			$2,
+			$3
+		)
+		RETURNING id
+		`,
 			project.Name,
 			project.Description,
-		).Scan(&project.ID)
+			project.UserID,
+		).Scan(
+			&project.ID,
+		)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -232,72 +286,98 @@ func main() {
 			return
 		}
 
-		c.JSON(http.StatusCreated, project)
+		c.JSON(
+			http.StatusCreated,
+			project,
+		)
 	})
 
 	// UPDATE PROJECT
 	protected.PUT("/projects/:id", func(c *gin.Context) {
+
 		id := c.Param("id")
+
+		userID, _ := c.Get("userID")
 
 		var project Project
 
 		if err := c.BindJSON(&project); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": err.Error(),
-			})
 			return
 		}
 
 		_, err := database.DB.Exec(
 			context.Background(),
 			`
-			UPDATE projects
-			SET name = $1,
-			    description = $2
-			WHERE id = $3
-			`,
+		UPDATE projects
+		SET
+			name = $1,
+			description = $2
+		WHERE
+			id = $3
+		AND
+			user_id = $4
+		`,
 			project.Name,
 			project.Description,
 			id,
+			userID,
 		)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
+			c.JSON(
+				http.StatusInternalServerError,
+				gin.H{
+					"error": err.Error(),
+				},
+			)
+
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Project updated",
-		})
+		c.JSON(
+			http.StatusOK,
+			gin.H{
+				"message": "Project updated",
+			},
+		)
 	})
-
 	// DELETE PROJECT
 	protected.DELETE("/projects/:id", func(c *gin.Context) {
+
 		id := c.Param("id")
+
+		userID, _ := c.Get("userID")
 
 		_, err := database.DB.Exec(
 			context.Background(),
-			"DELETE FROM projects WHERE id = $1",
+			`
+		DELETE FROM projects
+		WHERE
+			id = $1
+		AND
+			user_id = $2
+		`,
 			id,
+			userID,
 		)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err.Error(),
-			})
+
+			c.JSON(
+				http.StatusInternalServerError,
+				gin.H{
+					"error": err.Error(),
+				},
+			)
+
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Project deleted",
-		})
+		c.JSON(
+			http.StatusOK,
+			gin.H{
+				"message": "Project deleted",
+			},
+		)
 	})
-
-	log.Println("Server running on :8080")
-
-	if err := r.Run(":8080"); err != nil {
-		log.Fatal(err)
-	}
 }

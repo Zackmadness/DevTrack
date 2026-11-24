@@ -31,27 +31,36 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		token, err := jwt.Parse(
 			tokenString,
-			func(
-				token *jwt.Token,
-			) (interface{}, error) {
-
+			func(token *jwt.Token) (interface{}, error) {
 				return []byte(
-					os.Getenv(
-						"JWT_SECRET",
-					),
+					os.Getenv("JWT_SECRET"),
 				), nil
 			},
 		)
 
 		if err != nil || !token.Valid {
-
 			c.JSON(401, gin.H{
 				"error": "Invalid token",
 			})
-
 			c.Abort()
 			return
 		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+
+		if !ok {
+			c.JSON(401, gin.H{
+				"error": "Invalid token claims",
+			})
+			c.Abort()
+			return
+		}
+
+		userID := int64(
+			claims["user_id"].(float64),
+		)
+
+		c.Set("userID", userID)
 
 		c.Next()
 	}
